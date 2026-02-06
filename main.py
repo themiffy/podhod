@@ -3,9 +3,8 @@ import asyncio
 import json
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import Message, BotCommand, CallbackQuery
-from aiogram.filters import CommandStart
-from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, BotCommand
+from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.handlers import ErrorHandler
 
@@ -23,13 +22,13 @@ dp = Dispatcher(storage=storage)
 dp.include_router(main_router)
 
 
-@dp.message(CommandStart())
-async def start_handler(message: Message, state: FSMContext):
-    print(message)
+@dp.message(Command('help'))
+async def help_handler(message: Message):
+    await message.answer(f'Психологическая помощь при алкоголизме доступна пациентам клиники «Зависимость 24» в Москве круглосуточно. Вызвать ее можно по телефону 8 (495) 182-66-66')
 
 
 async def setup_bot_commands(bot: Bot):
-    commands = [BotCommand(command="/start", description="В начало")]
+    commands = [BotCommand(command="/help", description="Помощь")]
     await bot.set_my_commands(commands)
 
 @dp.errors()
