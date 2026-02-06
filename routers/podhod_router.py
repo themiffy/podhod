@@ -27,6 +27,7 @@ async def any_message(message: Message):
 
     if len(sportsmen) > 1:
         await message.answer('Тут несколько спортсменов. Я не умею такое обрабатывать')
+        return
 
     formated_sportsman: str = sportsmen[0][1:].capitalize()
     final_volume = handle_volumes(volumes)
