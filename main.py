@@ -22,14 +22,13 @@ dp = Dispatcher(storage=storage)
 dp.include_router(main_router)
 
 
-@dp.message(Command('help'))
-async def help_handler(message: Message):
-    await message.answer(f'Психологическая помощь при алкоголизме доступна пациентам клиники «Зависимость 24» в Москве круглосуточно. Вызвать ее можно по телефону 8 (495) 182-66-66')
-
-
 async def setup_bot_commands(bot: Bot):
-    commands = [BotCommand(command="/help", description="Помощь")]
+    commands = [BotCommand(command="/help", description="Помощь"),
+                BotCommand(command="/stats", description="Статистика")]
     await bot.set_my_commands(commands)
+
+
+
 
 @dp.errors()
 class MyHandler(ErrorHandler):

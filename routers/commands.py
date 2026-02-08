@@ -1,0 +1,32 @@
+from aiogram import Router
+from aiogram.types import Message
+from aiogram.filters import Command
+
+from app.database_func import get_volume
+from app.utils import pretty_print
+
+import random
+
+commands_router = Router(name=__name__)
+MEMES = ('По пьяни', 'Этот нигер слишком жёсткий', 'Это плавность', 'Делает',
+         'Мужчина', 'Это даёт приятные ощущения спереди', 'Эсса нигер')
+
+@commands_router.message(Command('help'))
+async def help_handler(message: Message):
+    await message.answer(f'Психологическая помощь при алкоголизме доступна пациентам клиники «Зависимость 24» в Москве круглосуточно. Вызвать ее можно по телефону 8 (495) 182-66-66')
+
+@commands_router.message(Command('stats'))
+async def stats_handler(message: Message):
+    report = ''
+    if len(message.text.split()) > 1: # Индивидуальный отчёт
+        sportsmen = message.text.split()[1].lower().capitalize()
+        volume = await get_volume(sportsmen)
+        report += f'Спортсмен {sportsmen} выпил {volume}л пива. {random.choice(MEMES)}'
+    else: # Общий отчёт
+        volume = await get_volume()
+        report += f'Выпито {volume} пива'
+
+
+    pretty_print(message)
+    await message.answer(report)
+    #await message.answer()
