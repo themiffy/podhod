@@ -38,4 +38,4 @@ async def any_message(message: Message):
     status = await add_podhod(user = formated_sportsman, volume = final_volume, message=text, date=message.date)
 
 
-    await message.answer(f'Подход зарегистрирован!\nСпортсмен: {formated_sportsman}, объём: {final_volume}л')
+    await message.answer(f'Подход зарегистрирован!\nСпортсмен: {formated_sportsman}, объём: {round(final_volume, 2)}л')

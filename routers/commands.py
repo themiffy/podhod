@@ -21,10 +21,10 @@ async def stats_handler(message: Message):
     if len(message.text.split()) > 1: # Индивидуальный отчёт
         sportsmen = message.text.split()[1].lower().capitalize()
         volume = await get_volume(sportsmen)
-        report += f'Спортсмен {sportsmen} выпил {volume}л пива. {random.choice(MEMES)}'
+        report += f'Спортсмен {sportsmen} выпил {round(volume, 2)}л пива. {random.choice(MEMES)}'
     else: # Общий отчёт
         volume = await get_volume()
-        report += f'Выпито {volume} пива'
+        report += f'Выпито {round(volume, 2)}л пива.'
 
 
     pretty_print(message)
