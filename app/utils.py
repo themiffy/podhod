@@ -20,7 +20,7 @@ def handle_volumes(vols: list[str]) -> float:
 
     if len(vols) == 0: return 0 # объём не найден
 
-    vols = [float(vol[:-1]) for vol in vols]
+    vols = [float(vol[:-1].replace(',', '.')) for vol in vols]
     return sum(vols)
 
 def pretty_print(message: Message, depth: int = 0):
