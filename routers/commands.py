@@ -9,7 +9,9 @@ import random
 
 commands_router = Router(name=__name__)
 MEMES = ('По пьяни', 'Этот нигер слишком жёсткий', 'Это плавность', 'Делает',
-         'Мужчина', 'Это даёт приятные ощущения спереди', 'Эсса нигер')
+         'Мужчина', 'Эсса нигер', 'Пьяный 2', 'Недостаточно',
+         'Так держать'
+         )
 
 @commands_router.message(Command('help'))
 async def help_handler(message: Message):
@@ -29,4 +31,3 @@ async def stats_handler(message: Message):
 
     pretty_print(message)
     await message.answer(report)
-    #await message.answer()

@@ -24,6 +24,7 @@ def handle_volumes(vols: list[str]) -> float:
     return sum(vols)
 
 def pretty_print(message: Message, depth: int = 0):
+    """Этот нигер слишком сумасшедший"""
     space: str = '  '
     print(f'{space*depth}{type(message)}:')
     for field in message:

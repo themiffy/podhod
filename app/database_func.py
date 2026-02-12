@@ -2,16 +2,19 @@ import app.connection_pool as connection_pool
 from psycopg2 import sql
 import datetime
 
-async def add_podhod(user: str, volume: float, message: str, date: datetime.datetime) -> bool:
+async def add_podhod(user: str, volume: float, message: str, date: datetime.datetime, tg_chat_id: int, tg_message_id: int) -> int:
     with connection_pool.db_cursor() as CURSOR:
-        CURSOR.execute(sql.SQL("INSERT INTO podhods (sportsmen, volume, original_message, date) VALUES ({user}, {volume}, {message}, {date}) RETURNING id")
+        CURSOR.execute(sql.SQL("""INSERT INTO podhods (sportsmen, volume, original_message, date, tg_chat_id, tg_message_id) 
+                                    VALUES ({user}, {volume}, {message}, {date}, {tg_chat_id}, {tg_message_id}) RETURNING id""")
                        .format(user=sql.Literal(user),
                                volume=sql.Literal(volume),
                                message=sql.Literal(message),
-                               date=sql.Literal(date)))
+                               date=sql.Literal(date),
+                               tg_chat_id=sql.Literal(tg_chat_id),
+                               tg_message_id=sql.Literal(tg_message_id)))
 
-        if CURSOR.fetchall()[0][0] is not None: return True
-        else: return False
+
+        return CURSOR.fetchall()[0][0]
 
 async def get_volume(sportsmen = None) -> float:
     query = "SELECT sum(volume) from podhods"
@@ -24,3 +27,39 @@ async def get_volume(sportsmen = None) -> float:
             return float(result)
         else:
             return 0
+
+async def edit_podhod(user: str, volume: float, message: str, date: datetime.datetime, tg_chat_id: int, tg_message_id: int) -> bool:
+
+    with connection_pool.db_cursor() as CURSOR:
+        CURSOR.execute(sql.SQL("""UPDATE podhods SET (sportsmen, volume, original_message) 
+                                    = ({user}, {volume}, {message}) 
+                                    WHERE tg_chat_id={tg_chat_id} and tg_message_id={tg_message_id} RETURNING id""")
+                       .format(user=sql.Literal(user),
+                               volume=sql.Literal(volume),
+                               message=sql.Literal(message),
+                               tg_chat_id=sql.Literal(tg_chat_id),
+                               tg_message_id=sql.Literal(tg_message_id)))
+
+
+        return CURSOR.fetchall()[0][0] is not None
+
+async def add_answer(podhod_id: int, bot_message_id: int, bot_chat_id: int) -> int:
+    with connection_pool.db_cursor() as CURSOR:
+        CURSOR.execute(sql.SQL("""INSERT INTO bot_answers (podhod_id, bot_message_id, bot_chat_id) 
+                                    VALUES ({podhod_id}, {bot_message_id}, {bot_chat_id}) RETURNING id""")
+                       .format(podhod_id=sql.Literal(podhod_id),
+                               bot_message_id=sql.Literal(bot_message_id),
+                               bot_chat_id=sql.Literal(bot_chat_id)))
+
+
+        return CURSOR.fetchall()[0][0]
+
+async def get_answer(tg_message_id: int, tg_chat_id: int) -> int:
+    with connection_pool.db_cursor() as CURSOR:
+        CURSOR.execute(sql.SQL("""SELECT bot_message_id, bot_chat_id from bot_answers 
+                                WHERE podhod_id = 
+                                    (SELECT id FROM podhods WHERE tg_message_id={tg_message_id} and tg_chat_id={tg_chat_id})""")
+                       .format(tg_message_id=sql.Literal(tg_message_id),
+                               tg_chat_id=sql.Literal(tg_chat_id)))
+        # (1648, 219449850) = (bot_message_id, bot_chat_id)
+        return CURSOR.fetchall()[0]
