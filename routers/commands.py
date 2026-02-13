@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
 
-from app.database_func import get_volume
+from app.database_func import get_volume, get_global_report
 from app.utils import pretty_print
 
 import random
@@ -10,7 +10,7 @@ import random
 commands_router = Router(name=__name__)
 MEMES = ('По пьяни', 'Этот нигер слишком жёсткий', 'Это плавность', 'Делает',
          'Мужчина', 'Эсса нигер', 'Пьяный 2', 'Недостаточно',
-         'Так держать'
+         'Так держать', 'В этом и смысл, бро...'
          )
 
 @commands_router.message(Command('help'))
@@ -31,3 +31,7 @@ async def stats_handler(message: Message):
 
     pretty_print(message)
     await message.answer(report)
+#
+# @commands_router.message(Command('top_report'))
+# async def help_handler(message: Message):
+#     await get_global_report()
