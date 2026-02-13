@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
 
-from app.database_func import get_volume, get_global_report
+from app.database_func import get_volume
 from app.utils import pretty_print
 
 import random
