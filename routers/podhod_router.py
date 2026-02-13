@@ -62,11 +62,11 @@ async def edited_message(message: Message, bot: Bot):
     logging.info(f'\nMessage edited: Спортсмен(ы): {str(sportsmen)} \nОбъёмы: {str(volumes)}')
 
     if len(sportsmen) == 0:
-        await bot.edit_message_text(text='Не указан спротсмен', chat_id=answer_chat_id, message_id=answer_message_id)
+        await bot.edit_message_text(text='Не указан спротсмен! Подход не изменён', chat_id=answer_chat_id, message_id=answer_message_id)
         return
 
     if len(sportsmen) > 1:
-        await bot.edit_message_text(text='Тут несколько спортсменов. Я не умею такое обрабатывать', chat_id=answer_chat_id, message_id=answer_message_id)
+        await bot.edit_message_text(text='Тут несколько спортсменов. Я не умею такое обрабатывать, подход не изменён', chat_id=answer_chat_id, message_id=answer_message_id)
         return
 
     formated_sportsman: str = sportsmen[0][1:].capitalize()
