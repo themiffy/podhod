@@ -1,3 +1,5 @@
+from asynchat import simple_producer
+
 import app.connection_pool as connection_pool
 from psycopg2 import sql
 import datetime
@@ -63,3 +65,25 @@ async def get_answer(tg_message_id: int, tg_chat_id: int) -> int:
                                tg_chat_id=sql.Literal(tg_chat_id)))
         # (1648, 219449850) = (bot_message_id, bot_chat_id)
         return CURSOR.fetchall()[0]
+
+async def get_podhod_history(sportsmen: str, depth: int = 10) -> str:
+
+    """If no arguments select everyone with depth of 10"""
+
+    query = """SELECT original_message from podhods"""
+    if sportsmen: query += """ WHERE sportsmen = {sportsmen}"""
+    query += """ ORDER BY id DESC LIMIT {depth}"""
+
+    with connection_pool.db_cursor() as CURSOR:
+        CURSOR.execute(sql.SQL(query)
+                       .format(sportsmen=sql.Literal(sportsmen),
+                                depth = sql.Literal(depth)))
+        # [('#подход #миша 2л эссулечкии лаймулечки любимой',), ('#подход #миша 1л',)]
+
+        temp_result = CURSOR.fetchall()
+        print(temp_result)
+        podhod_stats = ''
+        for tup in temp_result:
+            podhod_stats += f'{tup[0]}\n'
+
+        return podhod_stats
