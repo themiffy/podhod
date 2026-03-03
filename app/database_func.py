@@ -18,12 +18,12 @@ async def add_podhod(user: str, volume: float, message: str, date: datetime.date
 
         return CURSOR.fetchall()[0][0]
 
-async def get_volume(sportsmen = None) -> float:
-    query = "SELECT sum(volume) from podhods"
-    if sportsmen: query += " where sportsmen={sportsmen}"
+async def get_volume(sportsmen = None, depth: int = 365) -> float:
+    query = "SELECT sum(volume) from podhods where date > NOW() - interval '1 day' * {depth}"
+    if sportsmen: query += " and sportsmen={sportsmen}"
 
     with connection_pool.db_cursor() as CURSOR:
-        CURSOR.execute(sql.SQL(query).format(sportsmen=sql.Literal(sportsmen)))
+        CURSOR.execute(sql.SQL(query).format(sportsmen=sql.Literal(sportsmen), depth=sql.Literal(depth)))
         result = CURSOR.fetchall()[0][0]
         if result:
             return float(result)
@@ -66,13 +66,13 @@ async def get_answer(tg_message_id: int, tg_chat_id: int) -> int:
         # (1648, 219449850) = (bot_message_id, bot_chat_id)
         return CURSOR.fetchall()[0]
 
-async def get_podhod_history(sportsmen: str, depth: int = 10) -> str:
+async def get_podhod_history(sportsmen: str, depth: int = 14) -> str:
 
-    """If no arguments select everyone with depth of 10"""
+    """If no arguments select everyone with depth of 7 days"""
 
-    query = """SELECT original_message from podhods"""
-    if sportsmen: query += """ WHERE sportsmen = {sportsmen}"""
-    query += """ ORDER BY id DESC LIMIT {depth}"""
+    query = """SELECT original_message from podhods WHERE True"""
+    if sportsmen: query += """ and sportsmen = {sportsmen}"""
+    query += """ and date > NOW() - interval '1 day' * {depth} ORDER BY id DESC"""
 
     with connection_pool.db_cursor() as CURSOR:
         CURSOR.execute(sql.SQL(query)
