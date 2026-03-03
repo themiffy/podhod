@@ -33,3 +33,14 @@ def pretty_print(message: Message, depth: int = 0):
                 pretty_print(field[1], depth+1)
             else:
                 print(f'{space*depth*2}{field[0]}: {field[1]}')
+
+async def answer_long(message: Message, text: str) -> None:
+
+    MESSAGE_MAX_LENGTH: int = 4000
+
+    if len(text) < MESSAGE_MAX_LENGTH: await message.answer(text)
+    else:
+        print(f'Encountered long message: {len(text)=}')
+        for i in range(MESSAGE_MAX_LENGTH,len(text), MESSAGE_MAX_LENGTH):
+            print()
+            await message.answer(text[i-MESSAGE_MAX_LENGTH : i])

@@ -1,9 +1,10 @@
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
+from aiogram.enums import ParseMode
 
 from app.database_func import get_volume, get_podhod_history
-from app.utils import pretty_print
+from app.utils import pretty_print, answer_long
 from app.llm import llm_generate_personal_stats, llm_generate_general_stats
 
 import random
@@ -18,7 +19,7 @@ MEMES = ('По пьяни', 'Этот нигер слишком жёсткий',
 
 @commands_router.message(Command('help'))
 async def help_handler(message: Message):
-    await message.answer(f'Психологическая помощь при алкоголизме доступна пациентам клиники «Зависимость 24» в Москве круглосуточно. Вызвать ее можно по телефону 8 (495) 182-66-66')
+    await answer_long(message, f'Психологическая помощь при алкоголизме доступна пациентам клиники «Зависимость 24» в Москве круглосуточно. Вызвать ее можно по телефону 8 (495) 182-66-66')
 
 @commands_router.message(Command('stats'))
 async def stats_handler(message: Message):
@@ -50,7 +51,7 @@ async def stats_handler(message: Message):
             report += '\n\n' + llm_generate_general_stats(dossier)
 
     pretty_print(message)
-    await message.answer(report)
+    await answer_long(message, report)
 #
 # @commands_router.message(Command('top_report'))
 # async def help_handler(message: Message):

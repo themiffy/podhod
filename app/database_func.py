@@ -84,6 +84,6 @@ async def get_podhod_history(sportsmen: str, depth: int = 14) -> str:
         print(temp_result)
         podhod_stats = ''
         for tup in temp_result:
-            podhod_stats += f'{tup[0]}\n'
+            podhod_stats += f'{tup[0].replace("#подход", "")}\n'
 
         return podhod_stats
