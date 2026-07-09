@@ -81,7 +81,6 @@ async def get_podhod_history(sportsmen: str, depth: int = 14) -> str:
         # [('#подход #миша 2л эссулечкии лаймулечки любимой',), ('#подход #миша 1л',)]
 
         temp_result = CURSOR.fetchall()
-        print(temp_result)
         podhod_stats = ''
         for tup in temp_result:
             podhod_stats += f'{tup[0].replace("#подход", "")}\n'

@@ -35,6 +35,7 @@ async def stats_handler(message: Message):
 
         if USE_LLM:
             podhod_history = await get_podhod_history(sportsmen, period)
+            print(podhod_history)
             dossier = f'{report}\n История последних подходов за {period} дней:\n {podhod_history}\n...'
             report += '\n\n' + llm_generate_personal_stats(sportsmen, dossier)
 
@@ -47,6 +48,7 @@ async def stats_handler(message: Message):
 
         if USE_LLM:
             podhod_history = await get_podhod_history(sportsmen=None, depth=period)
+            print(podhod_history)
             dossier = f'{report}\n История последних подходов за {period} дней:\n {podhod_history}\n...'
             report += '\n\n' + llm_generate_general_stats(dossier)
 
