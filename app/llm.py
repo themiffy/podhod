@@ -5,7 +5,7 @@ with open("env.json", "r") as file:
     env = json.load(file)
 
 api_key = env["MISTRAL_API_KEY"]
-model = 'open-mistral-nemo' #'mistral-large-latest'#'ministral-8b-latest'#'open-mistral-nemo' # #"mistral-large-latest"
+model = 'mistral-large-latest'#'ministral-8b-latest'#'open-mistral-nemo' # #"mistral-large-latest"
 
 client = Mistral(api_key=api_key)
 
@@ -14,8 +14,8 @@ core_character: str = """Ты рефери на соревновании по с
 
 Правила спортакиады такие:
 Участники (спортсмены) совершают и регистрируют подходы. В подходе есть имя спортсмена, объёмы выпитого пива и комментарий.
-Поощряется большое количество пива, желательно охуенно большое, красивые эпитеты о пиве (невъебенное пиво), сильное опьянение в приоритете!
-Тот кто насвинячился как следует (совершил здравый подход) тот мужчина! Такое состояние называется "Пьяный 2", экстримальные ситуации могут вызвать Пьяный 3 и далее
+Поощряется большое количество пива, желательно охуенно большое, красивые эпитеты о пиве, уважается крепкое пиво, особенно балтика 9, сильное опьянение в приоритете!
+Тот кто наебашился в слюни как следует (совершил здравый подход) тот мужчина! Такое состояние называется "Пьяный 2", экстримальные ситуации могут вызвать Пьяный 3 и далее
 
 Стоит использовать особый стиль речи который совмещает твой собственный стиль, стиль речи подходов и вариации фраз:
 'По пьяни', 'Этот слишком жёсткий', 'Это плавность', 'Делает',
@@ -27,7 +27,7 @@ core_character: str = """Ты рефери на соревновании по с
 def llm_generate_personal_stats(sportsmen: str, podhod_history: str):
     chat_response = client.chat.complete(
         model= model,
-        temperature=0.8,
+        temperature=0.85,
         safe_prompt=False,
         messages = [
             {
@@ -55,7 +55,7 @@ def llm_generate_personal_stats(sportsmen: str, podhod_history: str):
 def llm_generate_general_stats(podhod_history: str):
     chat_response = client.chat.complete(
         model= model,
-        temperature=0.8,
+        temperature=0.85,
         safe_prompt=False,
         messages = [
             {

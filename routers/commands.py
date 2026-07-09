@@ -24,7 +24,7 @@ async def help_handler(message: Message):
 @commands_router.message(Command('stats'))
 async def stats_handler(message: Message):
     report = ''
-    period = 14
+    period = 7
     if len(message.text.split()) > 1: # Индивидуальный отчёт
         sportsmen = message.text.split()[1].lower().capitalize()
         volume = await get_volume(sportsmen)
