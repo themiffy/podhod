@@ -1,81 +1,32 @@
-from mistralai import Mistral
-import json
+"""Provider-independent generation of statistics commentary."""
 
-with open("env.json", "r") as file:
-    env = json.load(file)
+import logging
+from typing import Optional
 
-api_key = env["MISTRAL_API_KEY"]
-model = 'mistral-large-latest'#'ministral-8b-latest'#'open-mistral-nemo' # #"mistral-large-latest"
+from app.llm_client import ChatClient, LLMError
+from app.llm_config import LLMSettings
+from app.llm_prompts import build_stats_messages
 
-client = Mistral(api_key=api_key)
+logger = logging.getLogger(__name__)
+UNAVAILABLE_COMMENT = 'Комментарий рефери временно недоступен.'
 
-core_character: str = """Ты рефери на соревновании по спортивному употреблению пива. Характер у тебя мужской и пацанский, воспитание уличное,
-ты умеешь и любишь выпить сам, а ещё способен блеснуть красноречием (грубый мат)
 
-Правила спортакиады такие:
-Участники (спортсмены) совершают и регистрируют подходы. В подходе есть имя спортсмена, объёмы выпитого пива и комментарий.
-Поощряется большое количество пива, желательно охуенно большое, красивые эпитеты о пиве, уважается крепкое пиво, особенно балтика 9, сильное опьянение в приоритете!
-Тот кто наебашился в слюни как следует (совершил здравый подход) тот мужчина! Такое состояние называется "Пьяный 2", экстримальные ситуации могут вызвать Пьяный 3 и далее
+class StatsLLM:
+    def __init__(self, settings: LLMSettings, client: ChatClient):
+        self.settings = settings
+        self.client = client
 
-Стоит использовать особый стиль речи который совмещает твой собственный стиль, стиль речи подходов и вариации фраз:
-'По пьяни', 'Этот слишком жёсткий', 'Это плавность', 'Делает',
-         'Мужчина', 'Эсса', 'Пьяный 2', 'В этом и смысл, бро...', 'Двигается'
-Ты любишь смешивать фразы и придумывать собственные вариации
-Ты пишешь короткие и ёмкие сообщения, лаконично умудряясь быть быдлом и философом - похвалить и обосрать спортсмена
-"""
-
-def llm_generate_personal_stats(sportsmen: str, podhod_history: str):
-    chat_response = client.chat.complete(
-        model= model,
-        temperature=0.85,
-        safe_prompt=False,
-        messages = [
-            {
-                "role": "system",
-                "content": f"""
-                {core_character}
-                Дана история подходов спортсмена {sportsmen} за отчётный период и нужно оценить как спортсмен двигается:
-                {podhod_history}
-                
-                Не пиши длинных сообщений! Ограничься самым важным!
-                Не используй форматирование. Только текст
-                """,
-            },
-            {
-                "role": "user",
-                "content": f'Спорстмен {sportsmen} запросил статистику и оценку по своим подходам',
-            },
-        ]
-    )
-    resp = chat_response.choices[0].message.content
-    if resp == '':
-        return ' '
-    return resp
-
-def llm_generate_general_stats(podhod_history: str):
-    chat_response = client.chat.complete(
-        model= model,
-        temperature=0.85,
-        safe_prompt=False,
-        messages = [
-            {
-                "role": "system",
-                "content": f"""
-                {core_character}
-                Дана история подходов всех спортсменов за отчётный период и нужно оценить как они в целом двигаются:
-                {podhod_history}
-                
-                Тут нужен детальный анализ и выявление скрытых связей
-                Не используй форматирование. Только текст
-                """,
-            },
-            {
-                "role": "user",
-                "content": f'Организаторы запросили отчёт по алкогольным движениям',
-            },
-        ]
-    )
-    resp = chat_response.choices[0].message.content
-    if resp == '':
-        return ' '
-    return resp
+    async def generate(self, report: str, history: str,
+                       sportsmen: Optional[str] = None, period: int = 7) -> str:
+        if not self.settings.enabled:
+            return ''
+        # History is newest first. Keep the most recent entries within the budget.
+        if len(history) > self.settings.max_history_chars:
+            history = history[:self.settings.max_history_chars] + '\n[История сокращена]'
+        messages = build_stats_messages(report, history, sportsmen, period)
+        try:
+            return await self.client.complete(messages)
+        except LLMError as exc:
+            # Never log histories, generated text, credentials or provider bodies.
+            logger.warning('LLM commentary unavailable: %s', exc)
+            return UNAVAILABLE_COMMENT

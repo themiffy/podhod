@@ -38,9 +38,5 @@ async def answer_long(message: Message, text: str) -> None:
 
     MESSAGE_MAX_LENGTH: int = 4000
 
-    if len(text) < MESSAGE_MAX_LENGTH: await message.answer(text)
-    else:
-        print(f'Encountered long message: {len(text)=}')
-        for i in range(MESSAGE_MAX_LENGTH,len(text), MESSAGE_MAX_LENGTH):
-            print()
-            await message.answer(text[i-MESSAGE_MAX_LENGTH : i])
+    for start in range(0, len(text), MESSAGE_MAX_LENGTH):
+        await message.answer(text[start:start + MESSAGE_MAX_LENGTH], parse_mode=None)

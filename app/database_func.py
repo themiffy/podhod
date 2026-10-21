@@ -1,5 +1,3 @@
-from asynchat import simple_producer
-
 import app.connection_pool as connection_pool
 from psycopg2 import sql
 import datetime

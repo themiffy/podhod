@@ -1,14 +1,17 @@
 import logging
 import asyncio
 import json
+import aiohttp
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import Message, BotCommand
-from aiogram.filters import Command
+from aiogram.types import BotCommand
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.handlers import ErrorHandler
 
 from routers import main_router
+from app.llm import StatsLLM
+from app.llm_client import OpenAICompatibleClient
+from app.llm_config import LLMSettings
 
 
 logging.basicConfig(level=logging.INFO)
@@ -41,8 +44,11 @@ class MyHandler(ErrorHandler):
 
 # Entry point
 async def main() -> None:
-    await setup_bot_commands(bot)
-    await dp.start_polling(bot, on_startup=setup_bot_commands)
+    settings = LLMSettings.from_mapping(env)
+    async with aiohttp.ClientSession() as session:
+        llm = StatsLLM(settings, OpenAICompatibleClient(session, settings))
+        await setup_bot_commands(bot)
+        await dp.start_polling(bot, llm=llm)
 
 if __name__ == "__main__":
     asyncio.run(main())
