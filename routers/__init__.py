@@ -1,10 +1,12 @@
-__all__ = ('main_router', 'commands_router')
+__all__ = ('create_router',)
 
-from routers.podhod_router import podhod_router
-from routers.commands import commands_router
+from routers.podhod_router import create_podhod_router
+from routers.commands import create_commands_router
 from aiogram import Router
 
-main_router = Router(name=__name__)
-main_router.include_router(commands_router)
-main_router.include_router(podhod_router)
+def create_router() -> Router:
+    router = Router(name=__name__)
+    router.include_router(create_commands_router())
+    router.include_router(create_podhod_router())
+    return router
 

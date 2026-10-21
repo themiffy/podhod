@@ -1,73 +1,55 @@
-"""Exercise aiogram dispatch and dependency injection without external services."""
+"""Real aiogram dispatch and Telegram requests; only DB/LLM are replaced."""
 
-import runpy
-import sys
 import unittest
-from pathlib import Path
-from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
-
-from aiogram import Bot, Dispatcher
-from aiogram.types import Update
 
 from app.llm import StatsLLM, UNAVAILABLE_COMMENT
 from app.llm_client import LLMError
 from app.llm_config import LLMSettings
+from tests.support import make_dispatcher, make_update
 
 
 class StatsCommandTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        # Load the real command router with only its database boundary replaced.
-        # This avoids the legacy import-time connection pool and env.json read.
-        self.database = ModuleType('app.database_func')
-        self.database.get_volume = AsyncMock(side_effect=[12.5, 2.5])
-        self.database.get_podhod_history = AsyncMock(return_value='#миша 2,5л')
-        path = Path(__file__).resolve().parents[1] / 'routers' / 'commands.py'
-        with patch.dict(sys.modules, {'app.database_func': self.database}):
-            module = runpy.run_path(str(path))
-        self.send = AsyncMock()
-        self.globals_patch = patch.dict(module['stats_handler'].__globals__, {
-            'answer_long': self.send, 'pretty_print': MagicMock(),
-        })
-        self.globals_patch.start()
-        self.dispatcher = Dispatcher()
-        self.dispatcher.include_router(module['commands_router'])
-        self.bot = Bot(token='123456:TEST_TOKEN_FOR_OFFLINE_TESTS')
+        self.volume = AsyncMock(side_effect=[12.5, 2.5])
+        self.history = AsyncMock(return_value='#миша 2,5л')
+        self.patches = [
+            patch('routers.commands.get_volume', self.volume),
+            patch('routers.commands.get_podhod_history', self.history),
+        ]
+        for replacement in self.patches:
+            replacement.start()
+            self.addCleanup(replacement.stop)
+        self.dispatcher, self.bot, self.telegram = make_dispatcher()
         self.client = MagicMock(complete=AsyncMock(return_value='Это плавность'))
 
     async def asyncTearDown(self):
-        self.globals_patch.stop()
         await self.bot.session.close()
 
     async def dispatch(self, text, enabled=True):
-        update = Update.model_validate({
-            'update_id': 1,
-            'message': {
-                'message_id': 1, 'date': 1700000000,
-                'chat': {'id': 123, 'type': 'private'},
-                'from': {'id': 456, 'is_bot': False, 'first_name': 'Test'},
-                'text': text,
-            },
-        })
         await self.dispatcher.feed_update(
-            self.bot, update,
+            self.bot, make_update(text),
             llm=StatsLLM(LLMSettings(enabled=enabled), self.client),
         )
-        self.send.assert_awaited_once()
-        return self.send.call_args.args[1]
+        self.assertEqual(len(self.telegram.calls), 1)
+        method, request = self.telegram.calls[0]
+        self.assertEqual(method, 'sendMessage')
+        self.assertEqual(request['chat_id'], '-100123')
+        self.assertIsNone(request['parse_mode'])
+        return request['text']
 
     async def test_general_report_with_comment(self):
         report = await self.dispatch('/stats')
         self.assertIn('Всего всеми выпито 12.5л', report)
         self.assertIn('7 дней вы выпили 2.5л', report)
         self.assertIn('Это плавность', report)
-        self.database.get_podhod_history.assert_awaited_once_with(sportsmen=None, depth=7)
+        self.history.assert_awaited_once_with(sportsmen=None, depth=7)
 
     async def test_personal_report_with_comment(self):
         report = await self.dispatch('/stats МИША')
         self.assertIn('Спортсмен Миша выпил 12.5л', report)
         self.assertIn('Это плавность', report)
-        self.database.get_podhod_history.assert_awaited_once_with(sportsmen='Миша', depth=7)
+        self.history.assert_awaited_once_with(sportsmen='Миша', depth=7)
         self.assertIn('Миша', self.client.complete.call_args.args[0][1]['content'])
 
     async def test_api_error_preserves_numeric_report(self):
@@ -80,6 +62,6 @@ class StatsCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_llm_skips_history_and_api(self):
         report = await self.dispatch('/stats', enabled=False)
         self.assertIn('Всего всеми выпито 12.5л', report)
-        self.database.get_podhod_history.assert_not_awaited()
+        self.history.assert_not_awaited()
         self.client.complete.assert_not_awaited()
         self.assertNotIn(UNAVAILABLE_COMMENT, report)

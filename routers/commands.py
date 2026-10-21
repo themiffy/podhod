@@ -3,22 +3,19 @@ from aiogram.types import Message
 from aiogram.filters import Command
 
 from app.database_func import get_volume, get_podhod_history
-from app.utils import pretty_print, answer_long
+from app.utils import answer_long
 from app.llm import StatsLLM
 
 import random
 
-commands_router = Router(name=__name__)
 MEMES = ('По пьяни', 'Этот нигер слишком жёсткий', 'Это плавность', 'Делает',
          'Мужчина', 'Эсса нигер', 'Пьяный 2', 'Недостаточно',
          'Так держать', 'В этом и смысл, бро...'
          )
 
-@commands_router.message(Command('help'))
 async def help_handler(message: Message):
     await answer_long(message, f'Психологическая помощь при алкоголизме доступна пациентам клиники «Зависимость 24» в Москве круглосуточно. Вызвать ее можно по телефону 8 (495) 182-66-66')
 
-@commands_router.message(Command('stats'))
 async def stats_handler(message: Message, llm: StatsLLM):
     report = ''
     period = 7
@@ -43,5 +40,11 @@ async def stats_handler(message: Message, llm: StatsLLM):
         if comment:
             report += '\n\n' + comment
 
-    pretty_print(message)
     await answer_long(message, report)
+
+
+def create_commands_router() -> Router:
+    router = Router(name=__name__)
+    router.message.register(help_handler, Command('help'))
+    router.message.register(stats_handler, Command('stats'))
+    return router

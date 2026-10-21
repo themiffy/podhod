@@ -4,25 +4,14 @@ import json
 import aiohttp
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, ErrorEvent
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.handlers import ErrorHandler
 
-from routers import main_router
+from routers import create_router
+from app.connection_pool import init_db, close_db
 from app.llm import StatsLLM
 from app.llm_client import OpenAICompatibleClient
 from app.llm_config import LLMSettings
-
-
-logging.basicConfig(level=logging.INFO)
-
-with open("env.json", "r") as file:
-    env = json.load(file)
-
-bot = Bot(token=env["TOKEN"])
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-dp.include_router(main_router)
 
 
 async def setup_bot_commands(bot: Bot):
@@ -30,25 +19,32 @@ async def setup_bot_commands(bot: Bot):
                 BotCommand(command="/stats", description="Статистика")]
     await bot.set_my_commands(commands)
 
-
-
-
-@dp.errors()
-class MyHandler(ErrorHandler):
-    async def handle(self):
-        logging.exception(
-            "Cause unexpected exception %s: %s",
-            self.exception_name,
-            self.exception_message
-        )
+async def handle_error(event: ErrorEvent):
+    exception = event.exception
+    logging.error('Unhandled update error', exc_info=(
+        type(exception), exception, exception.__traceback__
+    ))
 
 # Entry point
 async def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    with open('env.json', encoding='utf-8') as file:
+        env = json.load(file)
     settings = LLMSettings.from_mapping(env)
-    async with aiohttp.ClientSession() as session:
-        llm = StatsLLM(settings, OpenAICompatibleClient(session, settings))
-        await setup_bot_commands(bot)
-        await dp.start_polling(bot, llm=llm)
+    bot = Bot(token=env['TOKEN'])
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(create_router())
+    dp.errors.register(handle_error)
+    try:
+        init_db(host=env['DB_HOST'], port=env.get('DB_PORT', 5432),
+                dbname=env['DB_NAME'], user=env['DB_USER'], password=env['DB_PASS'])
+        async with aiohttp.ClientSession() as session:
+            llm = StatsLLM(settings, OpenAICompatibleClient(session, settings))
+            await setup_bot_commands(bot)
+            await dp.start_polling(bot, llm=llm, close_bot_session=False)
+    finally:
+        close_db()
+        await bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

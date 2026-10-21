@@ -1,5 +1,5 @@
 import re
-from aiogram.types import Message, Chat, User
+from aiogram.types import Message
 
 PODHOD_MARK = '#подход'
 
@@ -22,17 +22,6 @@ def handle_volumes(vols: list[str]) -> float:
 
     vols = [float(vol[:-1].replace(',', '.')) for vol in vols]
     return sum(vols)
-
-def pretty_print(message: Message, depth: int = 0):
-    """Этот нигер слишком сумасшедший"""
-    space: str = '  '
-    print(f'{space*depth}{type(message)}:')
-    for field in message:
-        if field[1]:
-            if isinstance(field[1], (Chat, User,)):
-                pretty_print(field[1], depth+1)
-            else:
-                print(f'{space*depth*2}{field[0]}: {field[1]}')
 
 async def answer_long(message: Message, text: str) -> None:
 
