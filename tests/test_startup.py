@@ -11,6 +11,16 @@ from app.llm_config import LLMSettings
 
 
 class StartupTests(unittest.TestCase):
+    def test_legacy_launcher_arguments_do_not_prevent_startup(self):
+        path = Path(__file__).resolve().parents[1] / 'main.py'
+        for arguments in ([], ['>', 'log.log'], ['> log.log']):
+            with self.subTest(arguments=arguments), \
+                    patch.object(sys, 'argv', ['main.py', *arguments]), \
+                    patch('builtins.open', side_effect=AssertionError('Must not read production config')), \
+                    patch('asyncio.run', side_effect=lambda coroutine: coroutine.close()) as start:
+                runpy.run_path(str(path), run_name='__main__')
+            start.assert_called_once()
+
     def test_old_local_flag_cannot_fall_through_to_production_startup(self):
         path = Path(__file__).resolve().parents[1] / 'main.py'
         with patch.object(sys, 'argv', ['main.py', '--local']), \

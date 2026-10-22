@@ -50,7 +50,14 @@ async def main(config=None) -> None:
         await bot.session.close()
 
 if __name__ == '__main__':
-    argparse.ArgumentParser(
-        description='Подход Бот. Локальный запуск: python -m scripts.run_local'
-    ).parse_args()
+    parser = argparse.ArgumentParser(
+        description='Подход Бот. Локальный запуск: python -m scripts.run_local',
+        allow_abbrev=False,
+    )
+    parser.add_argument('--local', action='store_true', help=argparse.SUPPRESS)
+    # Older launchers pass extra arguments (including literal shell redirects).
+    # Preserve that startup behavior, but never mistake --local for production.
+    args, _ = parser.parse_known_args()
+    if args.local:
+        parser.error('Для локального запуска используй: python -m scripts.run_local')
     asyncio.run(main())

@@ -1,8 +1,51 @@
 # Цикл разработки
 
-Прод: VPS, PostgreSQL 15.8 на том же сервере. Обновление — `git pull`
-и ручной перезапуск процесса. GitHub Actions пока не подключены.
-Команда перезапуска, расположение логов и версия Python на VPS ещё не зафиксированы.
+## Прод: текущий systemd-сервис
+
+Прод работает на VPS, PostgreSQL 15.8 — на том же сервере. Проект находится
+в `/opt/podhod`, Python — в `/opt/podhod/venv/bin/python`. Сервис запускается
+от `root` и автоматически перезапускается (`Restart=always`). Версия Python
+пока не зафиксирована. GitHub Actions не подключены.
+
+Точное содержимое `/etc/systemd/system/podhod.service`, предоставленное
+пользователем 22 октября 2026 года:
+
+```ini
+[Unit]
+Description=Podhod Bot service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/podhod
+ExecStart=/opt/podhod/venv/bin/python /opt/podhod/main.py > log.log
+Restart=always
+StandardOutput=append:/opt/podhod/log.log
+StandardError=append:/opt/podhod/log.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Это снимок действующей конфигурации. В `ExecStart` не запускается shell:
+`>` и `log.log` передаются Python как аргументы. Бот допускает их для
+совместимости; запись stdout и stderr с добавлением в `/opt/podhod/log.log`
+обеспечивают `StandardOutput` и `StandardError`.
+
+Обновление и проверка после push:
+
+```sh
+cd /opt/podhod
+git pull
+sudo systemctl restart podhod.service
+sudo systemctl status podhod.service --no-pager
+sudo tail -n 100 /opt/podhod/log.log
+```
+
+Если изменился `reqs.txt`, перед перезапуском установить зависимости через
+`/opt/podhod/venv/bin/python -m pip install -r /opt/podhod/reqs.txt`.
+После изменения самого unit-файла сначала выполнить `sudo systemctl daemon-reload`,
+затем перезапуск. При обычном обновлении Python-кода `daemon-reload` не нужен.
 
 ## Проверки
 
@@ -69,7 +112,7 @@ venv/bin/python -m scripts.run_local
 Telegram-бота. Рабочий `env.json` не читается; параметры БД из локального файла
 не используются — подключение всегда ведёт в новый временный кластер.
 Остановка — Ctrl+C: бот и PostgreSQL завершаются, тестовые данные удаляются.
-Каждый запуск начинается с пустой БД. Команда запуска на VPS указана в README.
+Каждый запуск начинается с пустой БД. Рабочий сервис на VPS описан выше.
 
 По умолчанию в локальной конфигурации `LLM_ENABLED=false`: кнопки и числовая
 статистика работают без платных запросов. Для проверки текста модели явно
