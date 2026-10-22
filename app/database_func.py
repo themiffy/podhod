@@ -3,6 +3,18 @@ from psycopg2 import sql
 import datetime
 from typing import Optional
 
+
+async def get_sportsmen() -> list[str]:
+    with connection_pool.db_cursor() as cursor:
+        cursor.execute("""
+            SELECT DISTINCT sportsmen
+            FROM podhods
+            WHERE sportsmen IS NOT NULL AND btrim(sportsmen) <> ''
+            ORDER BY sportsmen
+        """)
+        return [row[0] for row in cursor.fetchall()]
+
+
 async def add_podhod(user: str, volume: float, message: str, date: datetime.datetime, tg_chat_id: int, tg_message_id: int) -> int:
     with connection_pool.db_cursor() as CURSOR:
         CURSOR.execute(sql.SQL("""INSERT INTO podhods (sportsmen, volume, original_message, date, tg_chat_id, tg_message_id) 

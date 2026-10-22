@@ -10,6 +10,7 @@ __pycache__/
 *.so
 *.iml
 env.json
+env.local.json
 # Distribution / packaging
 .Python
 build/

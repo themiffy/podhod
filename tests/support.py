@@ -4,7 +4,7 @@ import json
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.base import BaseSession
-from aiogram.methods import EditMessageText, SendMessage
+from aiogram.methods import AnswerCallbackQuery, EditMessageText, GetMe, SendMessage
 from aiogram.types import Update
 
 from routers import create_router
@@ -41,6 +41,11 @@ class RecordingTelegramSession(BaseSession):
             }
             if request.get('reply_markup'):
                 result['reply_markup'] = json.loads(request['reply_markup'])
+        elif isinstance(method, AnswerCallbackQuery):
+            result = True
+        elif isinstance(method, GetMe):
+            result = {'id': 123456, 'is_bot': True, 'first_name': 'Подход Бот',
+                      'username': 'podhod_test_bot'}
         else:
             raise AssertionError(f'Unexpected Telegram method: {method.__api_method__}')
         response = self.check_response(bot, method, 200, json.dumps({'ok': True, 'result': result}))
@@ -70,4 +75,20 @@ def make_update(text=None, message_id=1, chat_id=-100123, edited=False,
     return Update.model_validate({
         'update_id': message_id,
         'edited_message' if edited else 'message': message,
+    })
+
+
+def make_callback(data, message_id=1001, chat_id=-100123, user_id=999):
+    return Update.model_validate({
+        'update_id': 100,
+        'callback_query': {
+            'id': 'callback-test', 'chat_instance': 'test-chat', 'data': data,
+            'from': {'id': user_id, 'is_bot': False, 'first_name': 'Другой участник'},
+            'message': {
+                'message_id': message_id, 'date': 1700000000,
+                'chat': {'id': chat_id, 'type': 'supergroup'},
+                'from': {'id': 123456, 'is_bot': True, 'first_name': 'Подход Бот'},
+                'text': 'Чью статистику показать?',
+            },
+        },
     })

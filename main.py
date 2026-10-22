@@ -1,3 +1,4 @@
+import argparse
 import logging
 import asyncio
 import json
@@ -26,10 +27,12 @@ async def handle_error(event: ErrorEvent):
     ))
 
 # Entry point
-async def main() -> None:
+async def main(config=None) -> None:
     logging.basicConfig(level=logging.INFO)
-    with open('env.json', encoding='utf-8') as file:
-        env = json.load(file)
+    if config is None:
+        with open('env.json', encoding='utf-8') as file:
+            config = json.load(file)
+    env = config
     settings = LLMSettings.from_mapping(env)
     bot = Bot(token=env['TOKEN'])
     dp = Dispatcher(storage=MemoryStorage())
@@ -46,5 +49,8 @@ async def main() -> None:
         close_db()
         await bot.session.close()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
+    argparse.ArgumentParser(
+        description='Подход Бот. Локальный запуск: python -m scripts.run_local'
+    ).parse_args()
     asyncio.run(main())

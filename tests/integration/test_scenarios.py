@@ -1,10 +1,11 @@
 """Real PostgreSQL + real routing; Telegram and LLM stop at their API boundaries.
 
-Run via scripts/check.py --integration, which manages a temporary local cluster.
+Run via python -m scripts.check --integration, which manages a temporary local cluster.
 Each test creates its own randomly named schema; there are no TRUNCATE/DROP DATABASE calls.
 """
 
 import datetime
+import json
 import os
 import unittest
 import uuid
@@ -19,7 +20,7 @@ from app.database_func import add_podhod, edit_podhod, get_podhod_history, get_v
 from app.llm import StatsLLM, UNAVAILABLE_COMMENT
 from app.llm_client import LLMError
 from app.llm_config import LLMSettings
-from tests.support import make_dispatcher, make_update
+from tests.support import make_callback, make_dispatcher, make_update
 
 
 TEST_DSN = os.environ.get('PODHOD_TEST_DATABASE_URL')
@@ -60,6 +61,9 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
         update = make_update(text, date=int(self.now.timestamp()), **kwargs)
         await self.dispatcher.feed_update(self.bot, update, llm=self.llm)
 
+    async def click(self, data, **kwargs):
+        await self.dispatcher.feed_update(self.bot, make_callback(data, **kwargs), llm=self.llm)
+
     def rows(self, query):
         with connection_pool.db_cursor() as cursor:
             cursor.execute(query)
@@ -97,10 +101,14 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
         await self.seed('Миша', 2, days_ago=8, message_id=2)
         await self.seed('Петя', 3, message_id=3)
         await self.dispatch('/stats', message_id=4)
+        rows = json.loads(self.telegram.calls[-1][1]['reply_markup'])['inline_keyboard']
+        self.assertEqual([[b['text'] for b in row] for row in rows],
+                         [['Общая статистика'], ['Миша', 'Петя']])
+        await self.click(rows[0][0]['callback_data'])
         report = self.telegram.calls[-1][1]['text']
         self.assertIn('Всего всеми выпито 6.5л', report)
         self.assertIn('7 дней вы выпили 4.5л', report)
-        await self.dispatch('/stats миша', message_id=5)
+        await self.click(rows[1][0]['callback_data'])
         report = self.telegram.calls[-1][1]['text']
         self.assertIn('Спортсмен Миша выпил 3.5л', report)
         self.assertIn('7 дней он выпил 1.5л', report)
@@ -110,6 +118,7 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_database_and_unknown_sportsman(self):
         await self.dispatch('/stats')
+        await self.click('stats:all')
         self.assertIn('Всего всеми выпито 0л', self.telegram.calls[-1][1]['text'])
         await self.dispatch('/stats неизвестный', message_id=2)
         self.assertIn('выпил 0л', self.telegram.calls[-1][1]['text'])
@@ -148,7 +157,47 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
         await self.seed('Миша', 1.5)
         self.client.complete.side_effect = LLMError('HTTP 500')
         with self.assertLogs('app.llm', level='WARNING'):
-            await self.dispatch('/stats')
+            await self.click('stats:all')
         report = self.telegram.calls[-1][1]['text']
         self.assertIn('Всего всеми выпито 1.5л', report)
         self.assertIn(UNAVAILABLE_COMMENT, report)
+
+    async def test_menu_refresh_and_old_buttons_keep_correct_names(self):
+        await self.seed('Петя', 2)
+        await self.dispatch('/stats')
+        rows = json.loads(self.telegram.calls[-1][1]['reply_markup'])['inline_keyboard']
+        petya_button = rows[1][0]['callback_data']
+        # Adding an alphabetically earlier name must not change an old button's meaning.
+        await self.seed('Миша', 1, message_id=2)
+        await self.seed('Петя', 3, message_id=3)
+        with connection_pool.db_cursor() as cursor:
+            cursor.execute("INSERT INTO podhods (sportsmen) VALUES (NULL), (''), ('   ')")
+        await self.dispatch('/stats', message_id=4)
+        rows = json.loads(self.telegram.calls[-1][1]['reply_markup'])['inline_keyboard']
+        self.assertEqual([[b['text'] for b in row] for row in rows],
+                         [['Общая статистика'], ['Миша', 'Петя']])
+        await self.click(petya_button, user_id=1234)
+        self.assertIn('Спортсмен Петя выпил 5.0л', self.telegram.calls[-1][1]['text'])
+        self.assertEqual(self.telegram.calls[-1][0], 'sendMessage')
+        self.assertEqual(self.telegram.calls[-1][1]['chat_id'], '-100123')
+        # Editing the name on the original approach must not redirect its old button.
+        with connection_pool.db_cursor() as cursor:
+            cursor.execute("UPDATE podhods SET sportsmen = 'Саша' WHERE id = 1")
+        await self.click(petya_button)
+        self.assertIn('Спортсмен Петя выпил 3.0л', self.telegram.calls[-1][1]['text'])
+
+    async def test_old_button_for_renamed_sportsman_shows_alert(self):
+        await self.seed('Петя', 2)
+        await self.dispatch('/stats')
+        rows = json.loads(self.telegram.calls[-1][1]['reply_markup'])['inline_keyboard']
+        with connection_pool.db_cursor() as cursor:
+            cursor.execute("UPDATE podhods SET sportsmen = 'Миша'")
+        await self.click(rows[1][0]['callback_data'])
+        self.assertEqual(self.telegram.calls[-1][0], 'answerCallbackQuery')
+        self.assertIn('Спортсмен не найден', self.telegram.calls[-1][1]['text'])
+
+    async def test_distinct_names_have_no_period_limit(self):
+        await self.seed('Ветеран', 1, days_ago=400)
+        await self.dispatch('/stats')
+        rows = json.loads(self.telegram.calls[-1][1]['reply_markup'])['inline_keyboard']
+        self.assertEqual(rows[1][0]['text'], 'Ветеран')
