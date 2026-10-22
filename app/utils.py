@@ -1,5 +1,6 @@
 import re
-from aiogram.types import Message
+from typing import Optional
+from aiogram.types import Message, ReplyParameters
 
 PODHOD_MARK = '#подход'
 
@@ -23,9 +24,12 @@ def handle_volumes(vols: list[str]) -> float:
     vols = [float(vol[:-1].replace(',', '.')) for vol in vols]
     return sum(vols)
 
-async def answer_long(message: Message, text: str) -> None:
+async def answer_long(message: Message, text: str, *, reply_to_message_id: Optional[int] = None) -> None:
 
     MESSAGE_MAX_LENGTH: int = 4000
 
     for start in range(0, len(text), MESSAGE_MAX_LENGTH):
-        await message.answer(text[start:start + MESSAGE_MAX_LENGTH], parse_mode=None)
+        reply = ({'reply_parameters': ReplyParameters(message_id=reply_to_message_id,
+                                                     allow_sending_without_reply=True)}
+                 if reply_to_message_id is not None else {})
+        await message.answer(text[start:start + MESSAGE_MAX_LENGTH], parse_mode=None, **reply)

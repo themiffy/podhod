@@ -48,6 +48,7 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
         self.client = MagicMock(complete=AsyncMock(return_value='Это плавность'))
         self.llm = StatsLLM(LLMSettings(), self.client)
         self.now = datetime.datetime.now(datetime.timezone.utc)
+        self.requester = 1000
 
     def drop_schema(self):
         # Only the UUID schema created above is removed, never public or another database.
@@ -62,6 +63,9 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
         await self.dispatcher.feed_update(self.bot, update, llm=self.llm)
 
     async def click(self, data, **kwargs):
+        # These scenarios compare reports by independent requesters; cooldown has dedicated tests.
+        self.requester += 1
+        kwargs.setdefault('user_id', self.requester)
         await self.dispatcher.feed_update(self.bot, make_callback(data, **kwargs), llm=self.llm)
 
     def rows(self, query):
@@ -178,7 +182,7 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
                          [['Общая статистика'], ['Миша', 'Петя']])
         await self.click(petya_button, user_id=1234)
         self.assertIn('Спортсмен Петя выпил 5.0л', self.telegram.calls[-1][1]['text'])
-        self.assertEqual(self.telegram.calls[-1][0], 'sendMessage')
+        self.assertEqual(self.telegram.calls[-1][0], 'editMessageText')
         self.assertEqual(self.telegram.calls[-1][1]['chat_id'], '-100123')
         # Editing the name on the original approach must not redirect its old button.
         with connection_pool.db_cursor() as cursor:
@@ -201,3 +205,23 @@ class DatabaseScenarios(unittest.IsolatedAsyncioTestCase):
         await self.dispatch('/stats')
         rows = json.loads(self.telegram.calls[-1][1]['reply_markup'])['inline_keyboard']
         self.assertEqual(rows[1][0]['text'], 'Ветеран')
+
+    async def test_shared_menu_reports_are_attributed_and_rate_limited(self):
+        await self.seed('Миша', 1.5)
+        await self.dispatch('/stats', message_id=22)
+        menu = self.telegram.calls[-1][1]
+        self.assertEqual(json.loads(menu['reply_parameters'])['message_id'], 22)
+        rows = json.loads(menu['reply_markup'])['inline_keyboard']
+        await self.click('stats:all', user_id=700)
+        result = self.telegram.calls[-1][1]
+        self.assertEqual(json.loads(result['entities'])[0]['user']['id'], 700)
+        self.assertIn('выпито 1.5л', result['text'])
+        count = len(self.telegram.calls)
+        await self.click(rows[1][0]['callback_data'], user_id=700)
+        self.assertEqual(len(self.telegram.calls), count + 1)
+        self.assertEqual(self.telegram.calls[-1][0], 'answerCallbackQuery')
+        self.assertIn('Повтори через', self.telegram.calls[-1][1]['text'])
+        self.assertEqual(self.client.complete.await_count, 1)
+        await self.click(rows[1][0]['callback_data'], user_id=701)
+        self.assertIn('Спортсмен Миша выпил 1.5л', self.telegram.calls[-1][1]['text'])
+        self.assertEqual(self.client.complete.await_count, 2)

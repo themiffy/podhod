@@ -39,6 +39,32 @@ class StartupTests(unittest.TestCase):
 
 
 class LifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_report_cooldown_comes_from_config_or_environment(self):
+        import main
+        for environment, expected in (({}, 75), ({'REPORT_COOLDOWN_SECONDS': '42'}, 42)):
+            bot = MagicMock(session=MagicMock(close=AsyncMock()))
+            dispatcher = MagicMock(start_polling=AsyncMock())
+            config = {'TOKEN': 'offline', 'DB_HOST': 'localhost', 'DB_NAME': 'podhod_test',
+                      'DB_USER': 'test', 'DB_PASS': '', 'REPORT_COOLDOWN_SECONDS': 75}
+            with self.subTest(environment=environment), \
+                    patch.dict(main.os.environ, environment, clear=True), \
+                    patch.object(main, 'Bot', return_value=bot), \
+                    patch.object(main, 'Dispatcher', return_value=dispatcher) as create_dispatcher, \
+                    patch.object(main, 'init_db'), patch.object(main, 'close_db'), \
+                    patch.object(main, 'setup_bot_commands', new_callable=AsyncMock):
+                await main.main(config)
+            self.assertEqual(create_dispatcher.call_args.kwargs['report_limit'].cooldown_seconds, expected)
+
+    async def test_invalid_cooldown_fails_before_opening_connections(self):
+        import main
+        for value in (0, -1, 1.5, True, None, '', 'invalid', 'nan'):
+            with self.subTest(value=value), patch.dict(main.os.environ, {}, clear=True), \
+                    patch.object(main, 'Bot') as bot, patch.object(main, 'init_db') as database, \
+                    self.assertRaisesRegex(ValueError, 'REPORT_COOLDOWN_SECONDS'):
+                await main.main({'REPORT_COOLDOWN_SECONDS': value})
+            bot.assert_not_called()
+            database.assert_not_called()
+
     async def test_polling_receives_llm_and_resources_are_closed(self):
         import main
         bot = MagicMock(session=MagicMock(close=AsyncMock()))

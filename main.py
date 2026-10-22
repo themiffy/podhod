@@ -2,6 +2,7 @@ import argparse
 import logging
 import asyncio
 import json
+import os
 import aiohttp
 
 from aiogram import Bot, Dispatcher
@@ -13,6 +14,7 @@ from app.connection_pool import init_db, close_db
 from app.llm import StatsLLM
 from app.llm_client import OpenAICompatibleClient
 from app.llm_config import LLMSettings
+from app.report_limit import DEFAULT_REPORT_COOLDOWN_SECONDS, ReportRateLimit
 
 
 async def setup_bot_commands(bot: Bot):
@@ -34,8 +36,11 @@ async def main(config=None) -> None:
             config = json.load(file)
     env = config
     settings = LLMSettings.from_mapping(env)
+    report_limit = ReportRateLimit(os.environ.get(
+        'REPORT_COOLDOWN_SECONDS', env.get('REPORT_COOLDOWN_SECONDS', DEFAULT_REPORT_COOLDOWN_SECONDS)
+    ))
     bot = Bot(token=env['TOKEN'])
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=MemoryStorage(), report_limit=report_limit)
     dp.include_router(create_router())
     dp.errors.register(handle_error)
     try:

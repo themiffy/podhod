@@ -1,6 +1,7 @@
 """Real aiogram dispatch and Telegram requests; only DB/LLM are replaced."""
 
 import json
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,6 +10,7 @@ from aiogram.types import Update
 from app.llm import StatsLLM, UNAVAILABLE_COMMENT
 from app.llm_client import LLMError
 from app.llm_config import LLMSettings
+from app.report_limit import ReportRateLimit
 from tests.support import make_callback, make_dispatcher, make_update
 
 MISHA_CALLBACK = 'stats:person:a2011a92f0f1efc6b0af6a0fb4e623fc'
@@ -27,7 +29,9 @@ class StatsCommandTests(unittest.IsolatedAsyncioTestCase):
         for replacement in self.patches:
             replacement.start()
             self.addCleanup(replacement.stop)
-        self.dispatcher, self.bot, self.telegram = make_dispatcher()
+        self.time = 0
+        self.limit = ReportRateLimit(clock=lambda: self.time)
+        self.dispatcher, self.bot, self.telegram = make_dispatcher(self.limit)
         self.client = MagicMock(complete=AsyncMock(return_value='Это плавность'))
 
     async def asyncTearDown(self):
@@ -38,10 +42,11 @@ class StatsCommandTests(unittest.IsolatedAsyncioTestCase):
             self.bot, make_callback(callback) if callback is not None else make_update(text),
             llm=StatsLLM(LLMSettings(enabled=enabled), self.client),
         )
-        self.assertEqual([method for method, _ in self.telegram.calls],
-                         ['answerCallbackQuery', 'sendMessage'] if callback is not None else ['sendMessage'])
+        methods = (['answerCallbackQuery', 'sendMessage', 'editMessageText'] if callback is not None else
+                   ['sendMessage', 'editMessageText'] if text and len(text.split()) > 1 else ['sendMessage'])
+        self.assertEqual([method for method, _ in self.telegram.calls], methods)
         method, request = self.telegram.calls[-1]
-        self.assertEqual(method, 'sendMessage')
+        self.assertEqual(method, methods[-1])
         self.assertEqual(request['chat_id'], '-100123')
         self.assertIsNone(request['parse_mode'])
         return request['text']
@@ -89,7 +94,7 @@ class StatsCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Спортсмен Миша выпил 12.5л', report)
         self.sportsmen.assert_awaited_once()
         self.history.assert_awaited_once_with(sportsmen='Миша', depth=7)
-        self.assertNotIn('editMessageText', [method for method, _ in self.telegram.calls])
+        self.assertNotEqual(self.telegram.calls[-1][1]['message_id'], '1001')
 
     async def test_callback_is_answered_before_llm_generation(self):
         async def generate(messages):
@@ -152,3 +157,126 @@ class StatsCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.telegram.calls[-1][0], 'sendMessage')
         self.assertIn('reply_markup', self.telegram.calls[-1][1])
         self.sportsmen.assert_awaited_once()
+
+    async def test_callback_progress_and_result_identify_actual_requester(self):
+        await self.dispatch(callback='stats:all')
+        ack, progress, result = self.telegram.calls
+        self.assertEqual(ack[1]['text'], 'Готовлю отчёт…')
+        self.assertIn('готовлю отчёт', progress[1]['text'])
+        self.assertEqual(json.loads(progress[1]['reply_parameters'])['message_id'], 1001)
+        self.assertEqual(json.loads(result[1]['entities'])[0]['user']['id'], 999)
+        self.assertIn('Другой участник, твой отчёт:', result[1]['text'])
+
+    async def test_direct_report_replies_to_user_command(self):
+        await self.dispatch('/stats Миша')
+        progress = self.telegram.calls[0][1]
+        self.assertEqual(json.loads(progress['reply_parameters'])['message_id'], 1)
+        self.assertEqual(json.loads(progress['entities'])[0]['user']['id'], 456)
+
+    async def test_menu_owner_gets_reply_to_own_command(self):
+        data = make_callback('stats:all', user_id=456).model_dump()
+        data['callback_query']['message']['reply_to_message'] = make_update('/stats', message_id=12).message.model_dump()
+        await self.dispatcher.feed_update(self.bot, Update.model_validate(data),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual(json.loads(self.telegram.calls[1][1]['reply_parameters'])['message_id'], 12)
+
+    async def test_other_user_is_not_replied_to_menu_owners_command(self):
+        data = make_callback('stats:all').model_dump()
+        data['callback_query']['message']['reply_to_message'] = make_update('/stats', message_id=12).message.model_dump()
+        await self.dispatcher.feed_update(self.bot, Update.model_validate(data),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual(json.loads(self.telegram.calls[1][1]['reply_parameters'])['message_id'], 1001)
+
+    async def test_clicks_and_direct_commands_share_limit_across_chats(self):
+        await self.dispatch('/stats Миша')
+        self.telegram.calls.clear()
+        self.volume.reset_mock()
+        self.sportsmen.reset_mock()
+        await self.dispatcher.feed_update(self.bot, make_callback(MISHA_CALLBACK, user_id=456, chat_id=-222),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual([method for method, _ in self.telegram.calls], ['answerCallbackQuery'])
+        self.assertIn('5 мин 0 сек', self.telegram.calls[-1][1]['text'])
+        self.volume.assert_not_awaited()
+        self.sportsmen.assert_not_awaited()
+
+    async def test_different_users_can_request_reports_independently(self):
+        await self.dispatch(callback='stats:all')
+        self.volume.side_effect = [10, 1]
+        await self.dispatcher.feed_update(self.bot, make_callback('stats:all', user_id=1000),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual(self.client.complete.await_count, 2)
+
+    async def test_cooldown_expires_after_exactly_five_minutes(self):
+        await self.dispatch(callback='stats:all')
+        self.time = 299
+        await self.dispatcher.feed_update(self.bot, make_callback('stats:all'),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertIn('0 мин 1 сек', self.telegram.calls[-1][1]['text'])
+        self.time = 300
+        self.volume.side_effect = [10, 1]
+        await self.dispatcher.feed_update(self.bot, make_callback('stats:all'),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual(self.client.complete.await_count, 2)
+
+    async def test_custom_cooldown_controls_expiry_and_message(self):
+        self.limit = ReportRateLimit(cooldown_seconds=75, clock=lambda: self.time)
+        self.dispatcher['report_limit'] = self.limit
+        await self.dispatch(callback='stats:all')
+        self.time = 15
+        await self.dispatcher.feed_update(self.bot, make_callback('stats:all'),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertIn('1 мин 0 сек', self.telegram.calls[-1][1]['text'])
+        self.time = 75
+        self.volume.side_effect = [10, 1]
+        await self.dispatcher.feed_update(self.bot, make_callback('stats:all'),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual(self.client.complete.await_count, 2)
+
+    async def test_simultaneous_click_does_not_start_second_generation(self):
+        started, finish = asyncio.Event(), asyncio.Event()
+
+        async def generate(messages):
+            started.set()
+            await finish.wait()
+            return 'Делает'
+
+        self.client.complete.side_effect = generate
+        first = asyncio.create_task(self.dispatcher.feed_update(
+            self.bot, make_callback('stats:all'), llm=StatsLLM(LLMSettings(), self.client)))
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2)
+            self.assertIn('готовлю отчёт', self.telegram.calls[-1][1]['text'])
+            # Even if generation lasts longer than the cooldown, the same user cannot overlap it.
+            self.time = 400
+            await self.dispatcher.feed_update(self.bot, make_callback(MISHA_CALLBACK),
+                                              llm=StatsLLM(LLMSettings(), self.client))
+            self.assertIn('уже готовится', self.telegram.calls[-1][1]['text'])
+            self.assertEqual(self.client.complete.await_count, 1)
+        finally:
+            finish.set()
+            await first
+
+    async def test_generation_failure_updates_status_and_releases_limit(self):
+        self.volume.side_effect = RuntimeError('database unavailable')
+        with self.assertRaisesRegex(RuntimeError, 'database unavailable'):
+            await self.dispatcher.feed_update(self.bot, make_callback('stats:all'),
+                                              llm=StatsLLM(LLMSettings(), self.client))
+        self.assertIn('не удалось подготовить', self.telegram.calls[-1][1]['text'])
+        self.assertEqual(self.limit.acquire(999), 0)
+
+    async def test_stale_button_does_not_consume_cooldown(self):
+        self.sportsmen.return_value = []
+        await self.dispatcher.feed_update(self.bot, make_callback(MISHA_CALLBACK),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        self.assertEqual(self.limit.acquire(999), 0)
+
+    async def test_long_report_continues_as_reply_to_attributed_result(self):
+        self.client.complete.return_value = 'x' * 9000
+        await self.dispatcher.feed_update(self.bot, make_callback('stats:all'),
+                                          llm=StatsLLM(LLMSettings(), self.client))
+        result = next(request for method, request in self.telegram.calls if method == 'editMessageText')
+        tails = [request for method, request in self.telegram.calls[3:] if method == 'sendMessage']
+        self.assertEqual(len(tails), 2)
+        self.assertTrue(all(str(json.loads(request['reply_parameters'])['message_id']) == result['message_id']
+                            for request in tails))
+        self.assertEqual((result['text'] + ''.join(request['text'] for request in tails)).count('x'), 9000)

@@ -8,6 +8,7 @@ from aiogram.methods import AnswerCallbackQuery, EditMessageText, GetMe, SendMes
 from aiogram.types import Update
 
 from routers import create_router
+from app.report_limit import ReportRateLimit
 
 
 class RecordingTelegramSession(BaseSession):
@@ -31,6 +32,8 @@ class RecordingTelegramSession(BaseSession):
         }
         self.calls.append((method.__api_method__, request))
         if isinstance(method, (SendMessage, EditMessageText)):
+            if isinstance(method, SendMessage) and method.reply_parameters:
+                self.message_id = max(self.message_id, method.reply_parameters.message_id)
             self.message_id += 1
             result = {
                 'message_id': (method.message_id if isinstance(method, EditMessageText)
@@ -52,8 +55,8 @@ class RecordingTelegramSession(BaseSession):
         return response.result
 
 
-def make_dispatcher():
-    dispatcher = Dispatcher()
+def make_dispatcher(report_limit=None):
+    dispatcher = Dispatcher(report_limit=report_limit or ReportRateLimit())
     dispatcher.include_router(create_router())
     session = RecordingTelegramSession()
     bot = Bot(token='123456:OFFLINE_TEST_TOKEN', session=session)

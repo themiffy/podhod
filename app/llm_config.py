@@ -14,7 +14,7 @@ class LLMSettings:
     base_url: str = 'https://api.deepseek.com'
     model: str = 'deepseek-flash'
     api_key: str = field(default='', repr=False)
-    temperature: float = 0.85
+    temperature: float = 0.89
     max_tokens: int = 1000
     timeout_seconds: float = 45.0
     max_history_chars: int = 24000
